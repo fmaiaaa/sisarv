@@ -378,6 +378,8 @@ def run_sisarv(formusuario, formsenha, df, progress_callback=None, should_stop=N
         else:
             print(msg)
 
+    log("Conectando ao SisArv...")
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -671,6 +673,7 @@ def run_sisarv(formusuario, formsenha, df, progress_callback=None, should_stop=N
             opts = re.findall(r'<option\s+value="(\d+)"[^>]*>\s*([^<]+?)\s*</option>', bloco.group(1))
             return {texto.strip(): val for val, texto in opts if texto.strip()}
 
+        log("Preenchendo árvores via requests...")
         map_popular = extrair_opcoes_select(html_edicao, "nome_popular")
         map_cientifico = extrair_opcoes_select(html_edicao, "nome_cientifico")
         map_popular_norm = {normalizar_nome(t): val for t, val in map_popular.items()}
@@ -691,7 +694,9 @@ def run_sisarv(formusuario, formsenha, df, progress_callback=None, should_stop=N
             n = int(n)
             pbar.set_postfix(unidade=n)
             if n in numeros_ja:
-                pbar.write(f"Nº {n} já preenchido na lista, pulando.")
+                msg = f"Nº {n} já preenchido na lista, pulando."
+                pbar.write(msg)
+                log(msg)
                 continue
             nome_vulgar = str(row["Nome Vulgar"]).strip() if pd.notna(row.get("Nome Vulgar")) else ""
             nome_cientifico = str(row["Nome Científico"]).strip() if pd.notna(row.get("Nome Científico")) else ""
@@ -717,7 +722,9 @@ def run_sisarv(formusuario, formsenha, df, progress_callback=None, should_stop=N
             )
             if not id_popular or not id_cientifico:
                 arvores_nao_encontradas.append((n, texto_popular, texto_cientifico))
-                pbar.write(f"Nº {n}: nome não encontrado nos selects (vulgar={texto_popular!r}, científico={texto_cientifico!r}). Pulando.")
+                msg = f"Nº {n}: nome não encontrado nos selects (vulgar={texto_popular!r}, científico={texto_cientifico!r}). Pulando."
+                pbar.write(msg)
+                log(msg)
                 continue
             valores = obter_valores_mapeamento(row, df_linhas.columns)
             valores["nome_popular"] = id_popular
@@ -735,18 +742,23 @@ def run_sisarv(formusuario, formsenha, df, progress_callback=None, should_stop=N
             try:
                 resp.raise_for_status()
             except requests.exceptions.HTTPError as e:
+                log(f"Nº {n}: servidor retornou {resp.status_code} - {e}")
                 pbar.write(f"Nº {n}: servidor retornou {resp.status_code} - {e}")
                 pbar.write(f"Resposta: len={len(resp.text)} chars; primeiros 800: {repr(resp.text[:800])}")
+                log("Resposta (primeiros 800 chars): " + repr(resp.text[:800]))
                 pbar.write("Payload (valores enviados):")
                 for k, v in payload.items():
                     if k == "action":
                         continue
                     pbar.write(f"  {k}={repr(v)}")
                 pbar.write("Pulando para a próxima árvore.")
+                log("Pulando para a próxima árvore.")
                 continue
             html_edicao = seguir_redirect_post(resp.text, session)
             numeros_ja = extrair_numeros_ja_preenchidos(html_edicao)
-            pbar.write(f"Nº {n} ({nome_vulgar} / {nome_cientifico}) incluída via requests.")
+            msg = f"Nº {n} ({nome_vulgar} / {nome_cientifico}) incluída via requests."
+            pbar.write(msg)
+            log(msg)
         log("Preenchimento da linha 1 ao final concluído (via requests).")
         if arvores_nao_encontradas:
             log("--- Árvores não encontradas nos selects ---")
