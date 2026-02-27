@@ -46,6 +46,7 @@ def aplicar_estilo():
             font-family: 'Montserrat', sans-serif !important;
             color: {COR_AZUL_ESC} !important;
             font-weight: 800;
+            text-align: center;
         }}
 
         .block-container {{ max-width: 900px !important; padding: 2rem !important; }}
@@ -54,6 +55,11 @@ def aplicar_estilo():
             border-radius: 8px !important;
             border: 1px solid #e2e8f0 !important;
             background-color: {COR_INPUT_BG} !important;
+        }}
+
+        .stButton {{
+            display: flex !important;
+            justify-content: center !important;
         }}
 
         .stButton button {{
@@ -193,8 +199,8 @@ def main():
         st.markdown("#### Log de execução")
         log_text = "\n".join(st.session_state.sisarv_logs[-50:]) if st.session_state.sisarv_logs else "(aguardando...)"
         st.code(log_text, language=None)
-        col1, col2, _ = st.columns([1, 1, 3])
-        with col1:
+        _, col_btn, _ = st.columns([1, 1, 1])
+        with col_btn:
             stop_clicked = st.button("⏹ PARAR", type="secondary")
         if stop_clicked:
             st.session_state.sisarv_stop_requested = True
