@@ -172,7 +172,9 @@ def main():
             type=["xlsx", "xls", "csv", "ods"],
             key="upload",
         )
-        enviar = st.form_submit_button("ENVIAR DADOS AO SISARV", type="primary")
+        _, col_enviar, _ = st.columns([2, 1, 2])
+        with col_enviar:
+            enviar = st.form_submit_button("ENVIAR DADOS AO SISARV", type="primary")
 
     # Estado da execução em background
     if "sisarv_running" not in st.session_state:
@@ -199,7 +201,7 @@ def main():
         st.markdown("#### Log de execução")
         log_text = "\n".join(st.session_state.sisarv_logs[-50:]) if st.session_state.sisarv_logs else "(aguardando...)"
         st.code(log_text, language=None)
-        _, col_btn, _ = st.columns([1, 1, 1])
+        _, col_btn, _ = st.columns([2, 1, 2])
         with col_btn:
             stop_clicked = st.button("⏹ PARAR", type="secondary")
         if stop_clicked:
