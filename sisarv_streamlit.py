@@ -10,6 +10,8 @@ import pandas as pd
 import io
 import sys
 import os
+import threading
+import time
 
 # Cores e estilo (referência Direcional)
 COR_AZUL_ESC = "#002c5d"
@@ -166,6 +168,60 @@ def main():
         )
         enviar = st.form_submit_button("ENVIAR DADOS AO SISARV", type="primary")
 
+    # Estado da execução em background
+    if "sisarv_running" not in st.session_state:
+        st.session_state.sisarv_running = False
+    if "sisarv_stop_requested" not in st.session_state:
+        st.session_state.sisarv_stop_requested = False
+    if "sisarv_logs" not in st.session_state:
+        st.session_state.sisarv_logs = []
+    if "sisarv_result" not in st.session_state:
+        st.session_state.sisarv_result = None
+    if "sisarv_progress_current" not in st.session_state:
+        st.session_state.sisarv_progress_current = 0
+    if "sisarv_progress_total" not in st.session_state:
+        st.session_state.sisarv_progress_total = 0
+
+    # Se está rodando, mostrar progresso (tqdm-like) + log + botão Stop e atualizar a página periodicamente
+    if st.session_state.sisarv_running:
+        total = st.session_state.get("sisarv_progress_total", 0)
+        current = st.session_state.get("sisarv_progress_current", 0)
+        if total > 0:
+            st.progress(current / total, text=f"Árvore **{current}** de **{total}**")
+        else:
+            st.caption("Aguardando início do preenchimento...")
+        st.markdown("#### Log de execução")
+        log_text = "\n".join(st.session_state.sisarv_logs[-50:]) if st.session_state.sisarv_logs else "(aguardando...)"
+        st.code(log_text, language=None)
+        col1, col2, _ = st.columns([1, 1, 3])
+        with col1:
+            stop_clicked = st.button("⏹ PARAR", type="secondary")
+        if stop_clicked:
+            st.session_state.sisarv_stop_requested = True
+            st.rerun()
+        time.sleep(1)
+        st.rerun()
+
+    # Se terminou (resultado disponível), mostrar e limpar
+    if st.session_state.sisarv_result is not None:
+        sucesso, arvores_nao_encontradas, erro = st.session_state.sisarv_result
+        st.session_state.sisarv_result = None
+        st.session_state.sisarv_running = False
+        st.session_state.sisarv_stop_requested = False
+        if erro:
+            st.error(f"**Erro:** {erro}")
+        elif sucesso:
+            st.success("Processamento concluído.")
+            if arvores_nao_encontradas:
+                st.markdown("#### Árvores não encontradas nos selects")
+                for n, vulg, cien in arvores_nao_encontradas:
+                    st.caption(f"Nº {n}: {vulg!r} / {cien!r}")
+                st.info(f"Total: **{len(arvores_nao_encontradas)}** árvore(s) não encontrada(s).")
+        else:
+            st.warning("Processamento finalizado com avisos. Veja o log acima.")
+        st.markdown('<div class="footer">Direcional Engenharia | SisArv Inventário Botânico</div>', unsafe_allow_html=True)
+        return
+
     if not enviar:
         st.markdown('<div class="footer">Informe login, senha e envie a planilha para continuar.</div>', unsafe_allow_html=True)
         return
@@ -192,35 +248,42 @@ def main():
     with st.expander("Visualizar primeiras linhas"):
         st.dataframe(df.head(20), use_container_width=True, hide_index=True)
 
-    log_container = st.empty()
-    logs = []
-
     def progress_callback(msg):
-        logs.append(msg)
-        log_container.markdown("```\n" + "\n".join(logs[-30:]) + "\n```")
+        st.session_state.sisarv_logs.append(msg)
 
-    with st.spinner("Conectando ao SisArv e enviando dados..."):
+    def progress_range_callback(atual, total):
+        st.session_state.sisarv_progress_current = atual
+        st.session_state.sisarv_progress_total = total
+
+    def run_in_thread():
         try:
-            sucesso, arvores_nao_encontradas, erro = run_sisarv(login.strip(), senha.strip(), df, progress_callback=progress_callback)
+            result = run_sisarv(
+                login.strip(),
+                senha.strip(),
+                df,
+                progress_callback=progress_callback,
+                should_stop=lambda: st.session_state.get("sisarv_stop_requested", False),
+                progress_range_callback=progress_range_callback,
+            )
+            st.session_state.sisarv_result = result
         except Exception as e:
-            sucesso = False
-            arvores_nao_encontradas = []
-            erro = str(e)
-            log_container.markdown(f"**Erro:** `{erro}`")
+            st.session_state.sisarv_result = (False, [], str(e))
+        finally:
+            st.session_state.sisarv_running = False
 
-    if erro:
-        st.error(f"**Erro:** {erro}")
-    elif sucesso:
-        st.success("Processamento concluído.")
-        if arvores_nao_encontradas:
-            st.markdown("#### Árvores não encontradas nos selects")
-            for n, vulg, cien in arvores_nao_encontradas:
-                st.caption(f"Nº {n}: {vulg!r} / {cien!r}")
-            st.info(f"Total: **{len(arvores_nao_encontradas)}** árvore(s) não encontrada(s).")
-    else:
-        st.warning("Processamento finalizado com avisos. Veja o log acima.")
+    st.session_state.sisarv_logs = []
+    st.session_state.sisarv_stop_requested = False
+    st.session_state.sisarv_running = True
+    st.session_state.sisarv_progress_current = 0
+    st.session_state.sisarv_progress_total = len(df)
+    thread = threading.Thread(target=run_in_thread)
+    thread.start()
 
-    st.markdown('<div class="footer">Direcional Engenharia | SisArv Inventário Botânico</div>', unsafe_allow_html=True)
+    # Redesenha a página em 1s para entrar no bloco "sisarv_running" (log + botão PARAR)
+    st.markdown("#### Log de execução")
+    st.code("(iniciando...)", language=None)
+    time.sleep(1)
+    st.rerun()
 
 
 if __name__ == "__main__":
