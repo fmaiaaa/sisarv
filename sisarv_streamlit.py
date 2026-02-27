@@ -60,13 +60,16 @@ def aplicar_estilo():
         .stButton {{
             display: flex !important;
             justify-content: center !important;
+            width: 100% !important;
         }}
 
         .stButton button {{
             font-family: 'Inter', sans-serif;
             border-radius: 8px !important;
             padding: 0 20px !important;
-            height: 48px !important;
+            width: 100% !important;
+            height: 38px !important;
+            min-height: 38px !important;
             font-weight: 700 !important;
             text-transform: uppercase;
             letter-spacing: 0.05em;
@@ -172,9 +175,7 @@ def main():
             type=["xlsx", "xls", "csv", "ods"],
             key="upload",
         )
-        _, col_enviar, _ = st.columns([2, 1, 2])
-        with col_enviar:
-            enviar = st.form_submit_button("ENVIAR DADOS AO SISARV", type="primary")
+        enviar = st.form_submit_button("ENVIAR DADOS AO SISARV", type="primary")
 
     # Estado da execução em background
     if "sisarv_running" not in st.session_state:
@@ -201,9 +202,7 @@ def main():
         st.markdown("#### Log de execução")
         log_text = "\n".join(st.session_state.sisarv_logs[-50:]) if st.session_state.sisarv_logs else "(aguardando...)"
         st.code(log_text, language=None)
-        _, col_btn, _ = st.columns([2, 1, 2])
-        with col_btn:
-            stop_clicked = st.button("⏹ PARAR", type="secondary")
+        stop_clicked = st.button("⏹ PARAR", type="secondary")
         if stop_clicked:
             st.session_state.sisarv_stop_requested = True
             st.rerun()
