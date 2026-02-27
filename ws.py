@@ -361,12 +361,17 @@ def seguir_redirect_post(html, session, max_vezes=5):
     return html
 
 
-def run_sisarv(formusuario, formsenha, df, progress_callback=None):
+def run_sisarv(formusuario, formsenha, df, progress_callback=None, should_stop=None, progress_range_callback=None):
     """
     Executa o fluxo completo: login no SisArv, exclusão das árvores existentes, inclusão das linhas do df.
     progress_callback(msg) é chamado opcionalmente para atualizar interface (ex.: Streamlit).
+    progress_range_callback(atual, total) opcional: chamado a cada árvore (ex.: para barra de progresso).
+    should_stop() opcional: se retornar True, interrompe e retorna (False, [], "Interrompido pelo usuário.").
     Retorna: (sucesso: bool, arvores_nao_encontradas: list, mensagem_erro: str|None)
     """
+    def stopped():
+        return should_stop is not None and should_stop()
+
     def log(msg):
         if progress_callback:
             progress_callback(msg)
@@ -442,6 +447,8 @@ def run_sisarv(formusuario, formsenha, df, progress_callback=None):
 
     ids_arvores = extrair_ids_arvores(html_edicao)
     if ids_arvores:
+        if stopped():
+            return (False, [], "Interrompido pelo usuário.")
         log(f"Excluindo {len(ids_arvores)} árvore(s) do inventário antes de incluir...")
         num_workers = min(4, len(ids_arvores))
 
@@ -479,6 +486,8 @@ def run_sisarv(formusuario, formsenha, df, progress_callback=None):
         response.raise_for_status()
         html_edicao = seguir_redirect_post(response.text, session)
         log("Árvores excluídas.")
+        if stopped():
+            return (False, [], "Interrompido pelo usuário.")
 
     df_linhas = df.iloc[0:].copy() if len(df) > 0 else pd.DataFrame()
     if df_linhas.empty:
@@ -564,8 +573,14 @@ def run_sisarv(formusuario, formsenha, df, progress_callback=None):
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", panel_arvores)
             pausa(1.0, 1.8)
             numeros_ja = extrair_numeros_ja_preenchidos(driver.page_source)
-            pbar = tqdm(df_linhas.iterrows(), total=len(df_linhas), desc="Unidades", unit="un")
-            for _, row in pbar:
+            total_arvores = len(df_linhas)
+            pbar = tqdm(df_linhas.iterrows(), total=total_arvores, desc="Unidades", unit="un")
+            for idx, (_, row) in enumerate(pbar, start=1):
+                if progress_range_callback:
+                    progress_range_callback(idx, total_arvores)
+                if stopped():
+                    log("Interrompido pelo usuário.")
+                    return (False, [], "Interrompido pelo usuário.")
                 n = row["Nº"]
                 if pd.isna(n):
                     continue
@@ -662,8 +677,14 @@ def run_sisarv(formusuario, formsenha, df, progress_callback=None):
         map_cientifico_norm = {normalizar_nome(t): val for t, val in map_cientifico.items()}
         numeros_ja = extrair_numeros_ja_preenchidos(html_edicao)
         arvores_nao_encontradas = []
-        pbar = tqdm(df_linhas.iterrows(), total=len(df_linhas), desc="Unidades", unit="un")
-        for _, row in pbar:
+        total_arvores = len(df_linhas)
+        pbar = tqdm(df_linhas.iterrows(), total=total_arvores, desc="Unidades", unit="un")
+        for idx, (_, row) in enumerate(pbar, start=1):
+            if progress_range_callback:
+                progress_range_callback(idx, total_arvores)
+            if stopped():
+                log("Interrompido pelo usuário.")
+                return (False, [], "Interrompido pelo usuário.")
             n = row["Nº"]
             if pd.isna(n):
                 continue
